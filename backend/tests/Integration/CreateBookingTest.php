@@ -29,7 +29,8 @@ final class CreateBookingTest extends TestCase
     private const START     = '2026-09-14T09:00:00+02:00';
     private const SLOT_UNAVAILABLE_ERROR = 'This time slot is no longer available.';
     private const BOOKING_TEMPORARILY_UNAVAILABLE_ERROR = 'Booking service is temporarily unavailable. Please try again.';
-    private const INVALID_START_TIME_ERROR = 'Start time must use YYYY-MM-DDTHH:MM:SS with Z or an explicit UTC offset.';
+    private const INVALID_START_TIME_ERROR = 'Start time must use YYYY-MM-DDTHH:MM:SS with Z or an explicit UTC offset; '
+        . 'the booking must stay within UTC years 0000-9999.';
 
     private const CREATE_BOOKING_MUTATION = <<<'GRAPHQL'
         mutation CreateBooking($input: CreateBookingInput!, $serviceId: ID!, $date: String!) {
@@ -224,6 +225,25 @@ final class CreateBookingTest extends TestCase
         self::assertSame(0, $this->bookingCount());
     }
 
+    public function testBookingOutsideFourDigitUtcYearReturnsControlledDomainError(): void
+    {
+        foreach ([
+            '0000-01-01T00:00:00+23:59',
+            '9999-12-31T23:59:59-23:59',
+            '9999-12-31T23:45:00Z',
+        ] as $startTime) {
+            $result = $this->createBooking(startTime: $startTime);
+
+            self::assertArrayNotHasKey('errors', $result, 'Invalid input must not produce a top-level GraphQL error.');
+            self::assertNull($result['data']['createBooking']['stylist']);
+            self::assertSame([
+                ['field' => 'startTime', 'message' => self::INVALID_START_TIME_ERROR],
+            ], $result['data']['createBooking']['errors']);
+        }
+
+        self::assertSame(0, $this->bookingCount());
+    }
+
     public function testPragueOpeningSlotIsSerializedAsUtcInWinterAndSummer(): void
     {
         self::assertSame(
@@ -233,6 +253,25 @@ final class CreateBookingTest extends TestCase
         self::assertSame(
             '2026-07-13T07:00:00+00:00',
             $this->availableSlotStartTimes('2026-07-13')[0],
+        );
+    }
+
+    public function testSlotsUseTheConfiguredNonPragueBusinessTimezone(): void
+    {
+        $this->entityManager()->getConnection()->update(
+            'barbershop_businesses',
+            ['timezone' => 'America/New_York'],
+            ['id' => self::BUSINESS],
+        );
+        $this->entityManager()->clear();
+
+        self::assertSame(
+            '2026-01-12T14:00:00+00:00',
+            $this->availableSlotStartTimes('2026-01-12', 'America/New_York')[0],
+        );
+        self::assertSame(
+            '2026-07-13T13:00:00+00:00',
+            $this->availableSlotStartTimes('2026-07-13', 'America/New_York')[0],
         );
     }
 
@@ -546,7 +585,10 @@ final class CreateBookingTest extends TestCase
     }
 
     /** @return string[] */
-    private function availableSlotStartTimes(string $date): array
+    private function availableSlotStartTimes(
+        string $date,
+        string $expectedTimezone = 'Europe/Prague',
+    ): array
     {
         $result = $this->graphql()->query(self::AVAILABLE_SLOTS_QUERY, [
             'businessId' => self::BUSINESS,
@@ -556,7 +598,7 @@ final class CreateBookingTest extends TestCase
 
         self::assertArrayNotHasKey('errors', $result);
         self::assertNotNull($result['data']['business']);
-        self::assertSame('Europe/Prague', $result['data']['business']['timezone']);
+        self::assertSame($expectedTimezone, $result['data']['business']['timezone']);
 
         foreach ($result['data']['business']['stylists']['edges'] as $edge) {
             if ($edge['node']['id'] !== self::STYLIST_A) {

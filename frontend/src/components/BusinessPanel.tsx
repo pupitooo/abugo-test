@@ -2,7 +2,12 @@
 
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { useState } from 'react';
-import { dateKeyInTimeZone, formatDateInTimeZone, formatTimeInTimeZone } from '@/lib/date-time';
+import {
+  dateKeyInTimeZone,
+  formatDateInTimeZone,
+  formatOffsetInTimeZone,
+  formatTimeInTimeZone,
+} from '@/lib/date-time';
 
 const GET_BUSINESS_BOOKINGS = gql`
   query GetBusinessBookings($businessId: ID!) {
@@ -178,6 +183,8 @@ export default function BusinessPanel({ businessId }: Props) {
             {byDay[day].map((booking) => {
               const isPending = booking.status === 'PENDING';
               const busy = confirming || rejecting;
+              const startOffset = formatOffsetInTimeZone(booking.startTime, timeZone);
+              const endOffset = formatOffsetInTimeZone(booking.endTime, timeZone);
 
               return (
                 <div
@@ -185,8 +192,13 @@ export default function BusinessPanel({ businessId }: Props) {
                   className="border border-stone-800 bg-charcoal-900 px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4"
                 >
                   {/* Time */}
-                  <div className="text-gold-400 font-light text-lg tabular-nums shrink-0 w-28">
-                    {formatTimeInTimeZone(booking.startTime, timeZone)}–{formatTimeInTimeZone(booking.endTime, timeZone)}
+                  <div className="text-gold-400 font-light tabular-nums shrink-0 sm:w-40">
+                    <div className="text-lg whitespace-nowrap">
+                      {formatTimeInTimeZone(booking.startTime, timeZone)}–{formatTimeInTimeZone(booking.endTime, timeZone)}
+                    </div>
+                    <div className="text-xs text-gold-500/70 whitespace-nowrap">
+                      {startOffset === endOffset ? startOffset : `${startOffset} → ${endOffset}`}
+                    </div>
                   </div>
 
                   {/* Details */}

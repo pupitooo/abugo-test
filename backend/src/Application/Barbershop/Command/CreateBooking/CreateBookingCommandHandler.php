@@ -36,6 +36,10 @@ final class CreateBookingCommandHandler
         $start = $this->parseStartTime($command->startTime);
         $end   = $start->modify("+{$service->getDurationMinutes()} minutes");
 
+        if (!$this->usesFourDigitYear($end)) {
+            throw new InvalidBookingStartTimeException();
+        }
+
         $booking = new Booking(
             $this->uuidFactory->generate(),
             $service,
@@ -70,6 +74,17 @@ final class CreateBookingCommandHandler
             throw new InvalidBookingStartTimeException();
         }
 
-        return $dateTime->setTimezone(new DateTimeZone('UTC'));
+        $utcDateTime = $dateTime->setTimezone(new DateTimeZone('UTC'));
+
+        if (!$this->usesFourDigitYear($utcDateTime)) {
+            throw new InvalidBookingStartTimeException();
+        }
+
+        return $utcDateTime;
+    }
+
+    private function usesFourDigitYear(DateTimeImmutable $dateTime): bool
+    {
+        return preg_match('/^\d{4}$/D', $dateTime->format('Y')) === 1;
     }
 }

@@ -2,7 +2,11 @@
 
 import { gql, useQuery } from '@apollo/client';
 import { useState } from 'react';
-import { formatTimeInTimeZone, formatTimeWithOffsetInTimeZone } from '@/lib/date-time';
+import {
+  formatTimeInTimeZone,
+  formatTimeWithOffsetInTimeZone,
+  isAmbiguousLocalTimeInTimeZone,
+} from '@/lib/date-time';
 import BookingForm, { type Slot } from './BookingForm';
 
 const GET_STYLIST_SLOTS = gql`
@@ -86,7 +90,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
   function slotTimeLabel(iso: string): string {
     const label = formatTimeInTimeZone(iso, timeZone);
 
-    return (timeLabelCounts.get(label) ?? 0) > 1
+    return (timeLabelCounts.get(label) ?? 0) > 1 || isAmbiguousLocalTimeInTimeZone(iso, timeZone)
       ? formatTimeWithOffsetInTimeZone(iso, timeZone)
       : label;
   }
