@@ -2,9 +2,18 @@
 
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { useState } from 'react';
+import {
+  dateKeyInTimeZone,
+  formatDateInTimeZone,
+  formatOffsetInTimeZone,
+  formatTimeInTimeZone,
+} from '@/lib/date-time';
 
 const GET_BUSINESS_BOOKINGS = gql`
   query GetBusinessBookings($businessId: ID!) {
+    business(id: $businessId) {
+      timezone
+    }
     businessBookings(businessId: $businessId) {
       edges {
         node {
@@ -68,6 +77,7 @@ interface Booking {
 }
 
 interface GetBusinessBookingsData {
+  business: { timezone: string } | null;
   businessBookings: { edges: { node: Booking }[] };
 }
 
@@ -78,18 +88,6 @@ interface MutationData {
 
 interface Props {
   businessId: string;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('cs-CZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function dateKey(iso: string): string {
-  return iso.slice(0, 10);
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -158,10 +156,11 @@ export default function BusinessPanel({ businessId }: Props) {
     ...b,
     status: (localStatuses[b.id] ?? b.status) as Booking['status'],
   }));
+  const timeZone = data?.business?.timezone ?? 'UTC';
 
   // Group by date
   const byDay = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
-    const key = dateKey(b.startTime);
+    const key = dateKeyInTimeZone(b.startTime, timeZone);
     (acc[key] ??= []).push(b);
     return acc;
   }, {});
@@ -177,13 +176,15 @@ export default function BusinessPanel({ businessId }: Props) {
       {sortedDays.map((day) => (
         <section key={day}>
           <h3 className="text-xs tracking-[0.25em] uppercase text-gold-500 font-medium mb-4 capitalize">
-            {formatDate(day)}
+            {formatDateInTimeZone(byDay[day][0].startTime, timeZone)}
           </h3>
 
           <div className="space-y-px">
             {byDay[day].map((booking) => {
               const isPending = booking.status === 'PENDING';
               const busy = confirming || rejecting;
+              const startOffset = formatOffsetInTimeZone(booking.startTime, timeZone);
+              const endOffset = formatOffsetInTimeZone(booking.endTime, timeZone);
 
               return (
                 <div
@@ -191,8 +192,13 @@ export default function BusinessPanel({ businessId }: Props) {
                   className="border border-stone-800 bg-charcoal-900 px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4"
                 >
                   {/* Time */}
-                  <div className="text-gold-400 font-light text-lg tabular-nums shrink-0 w-28">
-                    {formatTime(booking.startTime)}–{formatTime(booking.endTime)}
+                  <div className="text-gold-400 font-light tabular-nums shrink-0 sm:w-40">
+                    <div className="text-lg whitespace-nowrap">
+                      {formatTimeInTimeZone(booking.startTime, timeZone)}–{formatTimeInTimeZone(booking.endTime, timeZone)}
+                    </div>
+                    <div className="text-xs text-gold-500/70 whitespace-nowrap">
+                      {startOffset === endOffset ? startOffset : `${startOffset} → ${endOffset}`}
+                    </div>
                   </div>
 
                   {/* Details */}

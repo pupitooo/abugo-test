@@ -37,6 +37,12 @@ A simple online booking application for two barbershops. Customers can choose a 
 - **Frontend** – Next.js (React, Apollo Client, Tailwind CSS)
 - Communication goes through a GraphQL endpoint on the backend
 
+### Booking Time Convention
+
+- Each business has an IANA timezone. Dates and opening hours are business-local wall time.
+- Booking timestamps represent absolute instants. The backend runtime and persistence use UTC. The UI submits the slot timestamp returned by GraphQL unchanged and uses the business timezone only for display; GraphQL input and output use the exact UTC format `YYYY-MM-DDTHH:MM:SS+00:00` and second precision.
+- The timezone migration defaults existing businesses to `Europe/Prague`. This test project's SQLite database is disposable and can be recreated with `make db-reset`; production rollout and legacy-data recovery are out of scope.
+
 ### Getting Started
 
 #### Requirements
@@ -79,6 +85,13 @@ Paths prefixed with `backend/` are accepted as well. For shells or tools where a
 
 ```bash
 make test TEST=tests/Integration/CreateBookingTest.php
+```
+
+Frontend timezone formatting tests run with:
+
+```bash
+cd frontend
+yarn test
 ```
 
 ### Using the App

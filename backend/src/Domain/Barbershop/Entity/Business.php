@@ -6,6 +6,7 @@ namespace App\Domain\Barbershop\Entity;
 
 use App\Domain\Barbershop\Enum\DayOfWeek;
 use App\Domain\ValueObject\Uuid;
+use DateTimeZone;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 
@@ -14,6 +15,7 @@ class Business
     private Uuid $id;
     private string $name;
     private string $slug;
+    private string $timezone;
 
     /** @var Collection<int, Service> */
     private Collection $services;
@@ -24,11 +26,16 @@ class Business
     /** @var Collection<int, OpeningHours> */
     private Collection $openingHours;
 
-    public function __construct(Uuid $id, string $name, string $slug)
+    public function __construct(Uuid $id, string $name, string $slug, string $timezone)
     {
+        if ($timezone !== 'UTC' && !in_array($timezone, DateTimeZone::listIdentifiers(), true)) {
+            throw new \InvalidArgumentException("Invalid IANA timezone: $timezone");
+        }
+
         $this->id           = $id;
         $this->name         = $name;
         $this->slug         = $slug;
+        $this->timezone     = $timezone;
         $this->services     = new ArrayCollection();
         $this->stylists     = new ArrayCollection();
         $this->openingHours = new ArrayCollection();
@@ -37,6 +44,7 @@ class Business
     public function getId(): Uuid { return $this->id; }
     public function getName(): string { return $this->name; }
     public function getSlug(): string { return $this->slug; }
+    public function getTimezone(): string { return $this->timezone; }
 
     /** @return Collection<int, Service> */
     public function getServices(): Collection { return $this->services; }

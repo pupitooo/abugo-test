@@ -10,6 +10,8 @@
 !/backend/var/.gitkeep
 /frontend/node_modules/
 /frontend/.next/
+/frontend/.test-dist/
+/frontend/tsconfig.tsbuildinfo
 
 # Local credentials used by AI workflows. Keep examples, never the real token.
 /.ai/secrets/*
