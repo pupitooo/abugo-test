@@ -44,6 +44,7 @@ interface Props {
   stylistId: string;
   serviceId: string;
   startTime: string;
+  startTimeLabel: string;
   date: string;
   stylistName: string;
   serviceName: string;
@@ -51,14 +52,11 @@ interface Props {
   onSuccess: (slots: Slot[]) => void;
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
 export default function BookingForm({
   stylistId,
   serviceId,
   startTime,
+  startTimeLabel,
   date,
   stylistName,
   serviceName,
@@ -139,7 +137,7 @@ export default function BookingForm({
           <span className="text-stone-400">{stylistName}</span>
         </p>
         <p>
-          <span className="text-gold-500">{formatTime(startTime)}</span>
+          <span className="text-gold-500">{startTimeLabel}</span>
         </p>
       </div>
 

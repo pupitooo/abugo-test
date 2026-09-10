@@ -13,7 +13,9 @@ use App\Domain\Barbershop\ValueObject\Slot;
 use App\Domain\ValueObject\UuidFactory;
 use DateInterval;
 use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
+use DomainException;
 
 final class GetAvailableSlotsQueryHandler
 {
@@ -32,16 +34,19 @@ final class GetAvailableSlotsQueryHandler
 
         $business   = $stylist->getBusiness();
         $duration   = $service->getDurationMinutes();
-        $dayOfWeek  = DayOfWeek::from((int) (new DateTimeImmutable($query->date))->format('N'));
+        $timezone   = new DateTimeZone($business->getTimezone());
+        $localDate  = $this->parseLocalDate($query->date, $timezone);
+        $dayOfWeek  = DayOfWeek::from((int) $localDate->format('N'));
         $todayHours = $business->getOpeningHoursForDay($dayOfWeek);
 
         if ($todayHours === null) {
             return [];
         }
 
-        $openFrom = new DateTimeImmutable("{$query->date} {$todayHours->getOpenFrom()}");
-        $openTo   = new DateTimeImmutable("{$query->date} {$todayHours->getOpenTo()}");
+        $openFrom = $this->parseLocalDateTime($query->date, $todayHours->getOpenFrom(), $timezone);
+        $openTo   = $this->parseLocalDateTime($query->date, $todayHours->getOpenTo(), $timezone);
         $step     = new DateInterval("PT{$duration}M");
+        $utc      = new DateTimeZone('UTC');
 
         $allSlots  = [];
         $slotStart = $openFrom;
@@ -50,20 +55,23 @@ final class GetAvailableSlotsQueryHandler
             if ($slotEnd > $openTo) {
                 break;
             }
-            $allSlots[] = new Slot($slotStart, $slotEnd);
+            $allSlots[] = new Slot(
+                $slotStart->setTimezone($utc),
+                $slotEnd->setTimezone($utc),
+            );
             $slotStart  = $slotEnd;
         }
 
-        $dayStart = new DateTimeImmutable("{$query->date} 00:00:00");
-        $dayEnd   = new DateTimeImmutable("{$query->date} 23:59:59");
+        $dayStart = $localDate->setTime(0, 0)->setTimezone($utc);
+        $dayEnd   = $localDate->modify('+1 day')->setTime(0, 0)->setTimezone($utc);
 
         /** @var Booking[] $bookings */
         $bookings = $this->em->createQueryBuilder()
             ->select('b')
             ->from(Booking::class, 'b')
             ->where('b.stylist = :stylist')
-            ->andWhere('b.startTime >= :dayStart')
-            ->andWhere('b.startTime <= :dayEnd')
+            ->andWhere('b.startTime < :dayEnd')
+            ->andWhere('b.endTime > :dayStart')
             ->andWhere('b.status != :rejected')
             ->setParameter('stylist', $stylist)
             ->setParameter('dayStart', $dayStart)
@@ -83,5 +91,38 @@ final class GetAvailableSlotsQueryHandler
                 return true;
             },
         ));
+    }
+
+    private function parseLocalDate(string $date, DateTimeZone $timezone): DateTimeImmutable
+    {
+        $localDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date, $timezone);
+        $errors = DateTimeImmutable::getLastErrors();
+
+        if (
+            $localDate === false
+            || $localDate->format('Y-m-d') !== $date
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        ) {
+            throw new DomainException('Date must use the YYYY-MM-DD format.');
+        }
+
+        return $localDate;
+    }
+
+    private function parseLocalDateTime(string $date, string $time, DateTimeZone $timezone): DateTimeImmutable
+    {
+        $value = "$date $time";
+        $dateTime = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $value, $timezone);
+        $errors = DateTimeImmutable::getLastErrors();
+
+        if (
+            $dateTime === false
+            || $dateTime->format('Y-m-d H:i') !== $value
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        ) {
+            throw new DomainException("Opening hours contain a non-existent local time: $value");
+        }
+
+        return $dateTime;
     }
 }

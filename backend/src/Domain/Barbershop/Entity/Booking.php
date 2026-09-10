@@ -8,6 +8,7 @@ use App\Domain\Barbershop\Enum\BookingStatus;
 use App\Domain\Barbershop\Exception\InvalidCustomerNameException;
 use App\Domain\ValueObject\Uuid;
 use DateTimeImmutable;
+use DateTimeZone;
 
 class Booking
 {
@@ -33,11 +34,13 @@ class Booking
             throw new InvalidCustomerNameException();
         }
 
+        $utc = new DateTimeZone('UTC');
+
         $this->id              = $id;
         $this->service         = $service;
         $this->stylist         = $stylist;
-        $this->startTime       = $startTime;
-        $this->endTime         = $endTime;
+        $this->startTime       = $startTime->setTimezone($utc);
+        $this->endTime         = $endTime->setTimezone($utc);
         $this->status          = BookingStatus::Pending;
         $this->customerName    = $customerName;
         $this->customerContact = $customerContact;

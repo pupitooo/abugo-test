@@ -19,7 +19,11 @@ final class CreateBookingInputType extends InputType
         return [
             'stylistId'       => ['type' => Type::nonNull(Type::id())],
             'serviceId'       => ['type' => Type::nonNull(Type::id())],
-            'startTime'       => ['type' => Type::nonNull(Type::string())],
+            'startTime'       => [
+                'type'        => Type::nonNull(Type::string()),
+                'description' => 'Slot start returned by availableSlots, unchanged, '
+                    . 'in YYYY-MM-DDTHH:MM:SS+00:00 format',
+            ],
             'customerName'    => ['type' => Type::nonNull(Type::string())],
             'customerContact' => ['type' => Type::nonNull(Type::string())],
         ];

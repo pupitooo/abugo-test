@@ -23,13 +23,16 @@ use Symfony\Component\Console\Output\NullOutput;
 
 final class CreateBookingTest extends TestCase
 {
+    private const BUSINESS  = '11111111-1111-1111-1111-111111111111';
     private const STYLIST_A = 'bbbbbbbb-bbbb-bbbb-bbbb-aaaaaaaaaaaa';
     private const STYLIST_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
     private const SERVICE   = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-    private const START     = '2026-09-14T09:00:00+00:00';
+    private const START     = '2026-09-14T07:00:00+00:00';
     private const SLOT_UNAVAILABLE_ERROR = 'This time slot is no longer available.';
     private const BOOKING_TEMPORARILY_UNAVAILABLE_ERROR = 'Booking service is temporarily unavailable. Please try again.';
     private const INVALID_CUSTOMER_NAME_ERROR = 'Customer name must not be blank.';
+    private const INVALID_START_TIME_ERROR = 'Start time must use YYYY-MM-DDTHH:MM:SS+00:00; '
+        . 'the booking must stay within UTC years 0000-9999.';
 
     private const CREATE_BOOKING_MUTATION = <<<'GRAPHQL'
         mutation CreateBooking($input: CreateBookingInput!, $serviceId: ID!, $date: String!) {
@@ -59,6 +62,32 @@ final class CreateBookingTest extends TestCase
           confirmBooking(input: $input) {
             booking { id status }
             errors { field message }
+          }
+        }
+        GRAPHQL;
+
+    private const AVAILABLE_SLOTS_QUERY = <<<'GRAPHQL'
+        query AvailableSlots($businessId: ID!, $serviceId: ID!, $date: String!) {
+          business(id: $businessId) {
+            timezone
+            stylists {
+              edges {
+                node {
+                  id
+                  availableSlots(serviceId: $serviceId, date: $date) {
+                    edges { node { startTime endTime } }
+                  }
+                }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+
+    private const BUSINESS_BOOKINGS_QUERY = <<<'GRAPHQL'
+        query BusinessBookings($businessId: ID!) {
+          businessBookings(businessId: $businessId) {
+            edges { node { id startTime endTime } }
           }
         }
         GRAPHQL;
@@ -161,6 +190,223 @@ final class CreateBookingTest extends TestCase
         yield 'Unicode whitespace' => ["\u{00A0}\u{2003}\u{202F}\u{3000}"];
     }
 
+    public function testStartTimeReturnedByAvailabilityCanBeSubmittedUnchanged(): void
+    {
+        $startTime = $this->availableSlotStartTimes('2026-09-14')[0];
+        self::assertSame('2026-09-14T07:00:00+00:00', $startTime);
+
+        $created = $this->createBooking(startTime: $startTime);
+
+        $this->assertCreateBookingSucceeded($created, self::STYLIST_A);
+        self::assertSame(1, $this->bookingCount());
+    }
+
+    public function testCanonicalUtcInputIsPersistedAndRehydratedAsUtc(): void
+    {
+        $created = $this->createBooking(startTime: '2026-09-14T07:00:00+00:00');
+
+        $this->assertCreateBookingSucceeded($created, self::STYLIST_A);
+        self::assertSame(
+            '2026-09-14 07:00:00',
+            $this->entityManager()->getConnection()->fetchOne(
+                'SELECT start_time FROM barbershop_bookings LIMIT 1',
+            ),
+        );
+
+        $this->entityManager()->clear();
+        $persistedBooking = $this->entityManager()->getRepository(\App\Domain\Barbershop\Entity\Booking::class)
+            ->findOneBy([]);
+        self::assertInstanceOf(\App\Domain\Barbershop\Entity\Booking::class, $persistedBooking);
+        self::assertSame('UTC', $persistedBooking->getStartTime()->getTimezone()->getName());
+        self::assertSame('UTC', $persistedBooking->getEndTime()->getTimezone()->getName());
+
+        $bookings = $this->businessBookings();
+
+        self::assertCount(1, $bookings);
+        self::assertSame('2026-09-14T07:00:00+00:00', $bookings[0]['startTime']);
+        self::assertSame('2026-09-14T07:30:00+00:00', $bookings[0]['endTime']);
+    }
+
+    #[DataProvider('nonCanonicalStartTimes')]
+    public function testNonCanonicalStartTimeIsRejectedWithControlledDomainError(string $startTime): void
+    {
+        $result = $this->createBooking(startTime: $startTime);
+
+        $this->assertCreateBookingStartTimeInvalid($result);
+        self::assertSame(0, $this->bookingCount());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function nonCanonicalStartTimes(): array
+    {
+        return [
+            'Z suffix instead of canonical +00:00' => ['2026-09-14T07:00:00Z'],
+            'non-zero UTC offset'                  => ['2026-09-14T09:00:00+02:00'],
+            'negative zero UTC offset'             => ['2026-09-14T07:00:00-00:00'],
+            'missing UTC offset'                   => ['2026-09-14T07:00:00'],
+            'missing seconds'                      => ['2026-09-14T07:00+00:00'],
+            'fractional seconds'                   => ['2026-09-14T07:00:00.000+00:00'],
+            'invalid calendar date'                => ['2026-02-30T07:00:00+00:00'],
+            'invalid time'                         => ['2026-09-14T24:00:00+00:00'],
+            'non-padded date and time fields'      => ['2026-9-14T7:00:00+00:00'],
+            'leading whitespace'                   => [' 2026-09-14T07:00:00+00:00'],
+        ];
+    }
+
+    public function testBookingEndOutsideFourDigitUtcYearReturnsControlledDomainError(): void
+    {
+        $result = $this->createBooking(startTime: '9999-12-31T23:45:00+00:00');
+
+        $this->assertCreateBookingStartTimeInvalid($result);
+        self::assertSame(0, $this->bookingCount());
+    }
+
+    public function testPragueOpeningSlotIsSerializedAsUtcInWinterAndSummer(): void
+    {
+        self::assertSame(
+            '2026-01-12T08:00:00+00:00',
+            $this->availableSlotStartTimes('2026-01-12')[0],
+        );
+        self::assertSame(
+            '2026-07-13T07:00:00+00:00',
+            $this->availableSlotStartTimes('2026-07-13')[0],
+        );
+    }
+
+    public function testSlotsUseTheConfiguredNonPragueBusinessTimezone(): void
+    {
+        $this->entityManager()->getConnection()->update(
+            'barbershop_businesses',
+            ['timezone' => 'America/New_York'],
+            ['id' => self::BUSINESS],
+        );
+        $this->entityManager()->clear();
+
+        self::assertSame(
+            '2026-01-12T14:00:00+00:00',
+            $this->availableSlotStartTimes('2026-01-12', 'America/New_York')[0],
+        );
+        self::assertSame(
+            '2026-07-13T13:00:00+00:00',
+            $this->availableSlotStartTimes('2026-07-13', 'America/New_York')[0],
+        );
+    }
+
+    public function testSlotsFollowPragueClockAcrossDstTransitions(): void
+    {
+        $this->entityManager()->getConnection()->executeStatement(
+            <<<'SQL'
+                INSERT INTO barbershop_opening_hours (id, business_id, day_of_week, open_from, open_to)
+                VALUES (:id, :businessId, 7, '01:00', '04:00')
+                SQL,
+            [
+                'id'         => 'dddddddd-dddd-dddd-dddd-000000000007',
+                'businessId' => self::BUSINESS,
+            ],
+        );
+        $this->entityManager()->clear();
+
+        self::assertSame([
+            '2026-03-29T00:00:00+00:00',
+            '2026-03-29T00:30:00+00:00',
+            '2026-03-29T01:00:00+00:00',
+            '2026-03-29T01:30:00+00:00',
+        ], $this->availableSlotStartTimes('2026-03-29'));
+
+        self::assertSame([
+            '2026-10-24T23:00:00+00:00',
+            '2026-10-24T23:30:00+00:00',
+            '2026-10-25T00:00:00+00:00',
+            '2026-10-25T00:30:00+00:00',
+            '2026-10-25T01:00:00+00:00',
+            '2026-10-25T01:30:00+00:00',
+            '2026-10-25T02:00:00+00:00',
+            '2026-10-25T02:30:00+00:00',
+        ], $this->availableSlotStartTimes('2026-10-25'));
+    }
+
+    public function testBookingCrossingLocalMidnightBlocksOverlappingSlotOnNextDay(): void
+    {
+        $this->useMidnightOpeningHours(2);
+
+        $created = $this->createBooking(
+            customerName: 'Midnight Customer',
+            startTime: '2026-09-14T21:50:00+00:00',
+        );
+        $this->assertCreateBookingSucceeded($created, self::STYLIST_A);
+
+        self::assertSame(
+            ['2026-09-14T22:30:00+00:00'],
+            $this->availableSlotStartTimes('2026-09-15'),
+        );
+    }
+
+    public function testBookingStartingExactlyAtDayStartBlocksTheFirstSlot(): void
+    {
+        $this->useMidnightOpeningHours(2);
+        $this->insertBookingInterval(
+            startTime: '2026-09-14 22:00:00',
+            endTime: '2026-09-14 22:30:00',
+        );
+
+        self::assertSame(
+            ['2026-09-14T22:30:00+00:00'],
+            $this->availableSlotStartTimes('2026-09-15'),
+        );
+    }
+
+    public function testBookingEndingExactlyAtDayStartDoesNotBlockAnySlot(): void
+    {
+        $this->useMidnightOpeningHours(2);
+        $this->insertBookingInterval(
+            startTime: '2026-09-14 21:30:00',
+            endTime: '2026-09-14 22:00:00',
+        );
+
+        self::assertSame(
+            [
+                '2026-09-14T22:00:00+00:00',
+                '2026-09-14T22:30:00+00:00',
+            ],
+            $this->availableSlotStartTimes('2026-09-15'),
+        );
+    }
+
+    public function testBookingStartingExactlyAtDayEndBelongsToFollowingDay(): void
+    {
+        $this->useMidnightOpeningHours(2, 3);
+        $this->insertBookingInterval(
+            startTime: '2026-09-15 22:00:00',
+            endTime: '2026-09-15 22:30:00',
+        );
+
+        self::assertSame(
+            [
+                '2026-09-14T22:00:00+00:00',
+                '2026-09-14T22:30:00+00:00',
+            ],
+            $this->availableSlotStartTimes('2026-09-15'),
+        );
+        self::assertSame(
+            ['2026-09-15T22:30:00+00:00'],
+            $this->availableSlotStartTimes('2026-09-16'),
+        );
+    }
+
+    public function testBookingAdjacentToFirstSlotDoesNotBlockIt(): void
+    {
+        $this->useMidnightOpeningHours(2);
+        $this->insertBookingInterval(
+            startTime: '2026-09-14 22:30:00',
+            endTime: '2026-09-14 23:00:00',
+        );
+
+        self::assertSame(
+            ['2026-09-14T22:00:00+00:00'],
+            $this->availableSlotStartTimes('2026-09-15'),
+        );
+    }
+
     public function testAvailableSlotsExcludesTheCreatedBooking(): void
     {
         $result = $this->createBooking(customerName: 'First Customer');
@@ -168,7 +414,9 @@ final class CreateBookingTest extends TestCase
         $this->assertCreateBookingSucceeded($result, self::STYLIST_A);
         $edges = $result['data']['createBooking']['stylist']['availableSlots']['edges'];
         $availableStartTimes = array_map(
-            static fn(array $edge): string => (new \DateTimeImmutable($edge['node']['startTime']))->format('H:i'),
+            static fn(array $edge): string => (new \DateTimeImmutable($edge['node']['startTime']))
+                ->setTimezone(new \DateTimeZone('Europe/Prague'))
+                ->format('H:i'),
             $edges,
         );
 
@@ -176,14 +424,14 @@ final class CreateBookingTest extends TestCase
         self::assertNotContains('09:00', $availableStartTimes);
     }
 
-    public function testDuplicateBookingIsRejectedAndOnlyOneRowRemains(): void
+    public function testDuplicateBookingIsReturnedAsDomainErrorAndNotPersisted(): void
     {
         $first = $this->createBooking(customerName: 'First Customer');
-        $second = $this->createBooking(customerName: 'Second Customer');
+        $conflict = $this->createBooking(customerName: 'Second Customer');
 
         $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
+        $this->assertCreateBookingRejected($conflict);
         self::assertSame(1, $this->bookingCount(), 'A conflicting booking must not be persisted.');
-        $this->assertCreateBookingRejected($second);
     }
 
     public function testSameTimeForDifferentStylistIsAllowed(): void
@@ -201,7 +449,7 @@ final class CreateBookingTest extends TestCase
         $first = $this->createBooking(customerName: 'First Customer');
         $overlap = $this->createBooking(
             customerName: 'Second Customer',
-            startTime: '2026-09-14T09:10:00+00:00',
+            startTime: '2026-09-14T07:10:00+00:00',
         );
 
         $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
@@ -214,7 +462,7 @@ final class CreateBookingTest extends TestCase
         $first = $this->createBooking(customerName: 'First Customer');
         $adjacent = $this->createBooking(
             customerName: 'Second Customer',
-            startTime: '2026-09-14T09:30:00+00:00',
+            startTime: '2026-09-14T07:30:00+00:00',
         );
 
         $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
@@ -263,15 +511,6 @@ final class CreateBookingTest extends TestCase
                 'SELECT status FROM barbershop_bookings ORDER BY status',
             ),
         );
-    }
-
-    public function testBookingConflictIsReturnedAsDomainGraphqlError(): void
-    {
-        $first = $this->createBooking(customerName: 'First Customer');
-        $conflict = $this->createBooking(customerName: 'Second Customer');
-
-        $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
-        $this->assertCreateBookingRejected($conflict);
     }
 
     public function testDatabaseLockTimeoutIsReturnedAsDomainGraphqlError(): void
@@ -413,6 +652,104 @@ final class CreateBookingTest extends TestCase
         ]);
     }
 
+    /** @return string[] */
+    private function availableSlotStartTimes(
+        string $date,
+        string $expectedTimezone = 'Europe/Prague',
+    ): array
+    {
+        $result = $this->graphql()->query(self::AVAILABLE_SLOTS_QUERY, [
+            'businessId' => self::BUSINESS,
+            'serviceId'  => self::SERVICE,
+            'date'       => $date,
+        ]);
+
+        self::assertArrayNotHasKey('errors', $result);
+        self::assertNotNull($result['data']['business']);
+        self::assertSame($expectedTimezone, $result['data']['business']['timezone']);
+
+        foreach ($result['data']['business']['stylists']['edges'] as $edge) {
+            if ($edge['node']['id'] !== self::STYLIST_A) {
+                continue;
+            }
+
+            return array_map(
+                static fn(array $slotEdge): string => $slotEdge['node']['startTime'],
+                $edge['node']['availableSlots']['edges'],
+            );
+        }
+
+        self::fail('Expected stylist was not returned by the business query.');
+    }
+
+    /** @return array<int, array{id: string, startTime: string, endTime: string}> */
+    private function businessBookings(): array
+    {
+        $result = $this->graphql()->query(self::BUSINESS_BOOKINGS_QUERY, [
+            'businessId' => self::BUSINESS,
+        ]);
+
+        self::assertArrayNotHasKey('errors', $result);
+
+        return array_map(
+            static fn(array $edge): array => $edge['node'],
+            $result['data']['businessBookings']['edges'],
+        );
+    }
+
+    private function useMidnightOpeningHours(int ...$daysOfWeek): void
+    {
+        foreach ($daysOfWeek as $dayOfWeek) {
+            $this->entityManager()->getConnection()->executeStatement(
+                <<<'SQL'
+                    UPDATE barbershop_opening_hours
+                    SET open_from = '00:00', open_to = '01:00'
+                    WHERE business_id = :businessId AND day_of_week = :dayOfWeek
+                    SQL,
+                [
+                    'businessId' => self::BUSINESS,
+                    'dayOfWeek'  => $dayOfWeek,
+                ],
+            );
+        }
+        $this->entityManager()->clear();
+    }
+
+    private function insertBookingInterval(string $startTime, string $endTime): void
+    {
+        $this->entityManager()->getConnection()->executeStatement(
+            <<<'SQL'
+                INSERT INTO barbershop_bookings (
+                    id,
+                    service_id,
+                    stylist_id,
+                    start_time,
+                    end_time,
+                    status,
+                    customer_name,
+                    customer_contact
+                ) VALUES (
+                    :id,
+                    :serviceId,
+                    :stylistId,
+                    :startTime,
+                    :endTime,
+                    'pending',
+                    'Interval Boundary Customer',
+                    'interval.boundary@example.com'
+                )
+                SQL,
+            [
+                'id'        => 'eeeeeeee-eeee-eeee-eeee-000000000003',
+                'serviceId' => self::SERVICE,
+                'stylistId' => self::STYLIST_A,
+                'startTime' => $startTime,
+                'endTime'   => $endTime,
+            ],
+        );
+        $this->entityManager()->clear();
+    }
+
     /** @param array<string, mixed> $result */
     private function assertCreateBookingSucceeded(array $result, string $stylistId): void
     {
@@ -432,6 +769,16 @@ final class CreateBookingTest extends TestCase
         self::assertNull($result['data']['createBooking']['stylist']);
         self::assertSame([
             ['field' => 'startTime', 'message' => self::SLOT_UNAVAILABLE_ERROR],
+        ], $result['data']['createBooking']['errors']);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function assertCreateBookingStartTimeInvalid(array $result): void
+    {
+        self::assertArrayNotHasKey('errors', $result, 'Invalid input must not produce a top-level GraphQL error.');
+        self::assertNull($result['data']['createBooking']['stylist']);
+        self::assertSame([
+            ['field' => 'startTime', 'message' => self::INVALID_START_TIME_ERROR],
         ], $result['data']['createBooking']['errors']);
     }
 

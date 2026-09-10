@@ -35,6 +35,11 @@ final class BusinessType extends GraphQLType
                 'description' => 'URL-friendly identifier of the business',
                 'resolve'     => fn(Business $business): string => $business->getSlug(),
             ],
+            'timezone' => [
+                'type'        => Type::nonNull(Type::string()),
+                'description' => 'IANA timezone used for opening hours and booking display',
+                'resolve'     => fn(Business $business): string => $business->getTimezone(),
+            ],
             'services' => [
                 'type'        => Type::nonNull(GraphQL::type('BarbershopServiceConnection')),
                 'description' => 'Services offered by this business',
