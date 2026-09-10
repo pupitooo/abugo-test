@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Barbershop\Entity;
 
 use App\Domain\Barbershop\Enum\BookingStatus;
+use App\Domain\Barbershop\Exception\InvalidCustomerNameException;
 use App\Domain\ValueObject\Uuid;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -29,6 +30,10 @@ class Booking
         string $customerName,
         string $customerContact,
     ) {
+        if (preg_match('/\S/u', $customerName) !== 1) {
+            throw new InvalidCustomerNameException();
+        }
+
         $utc = new DateTimeZone('UTC');
 
         $this->id              = $id;

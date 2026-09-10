@@ -10,6 +10,7 @@ use App\Domain\Barbershop\Entity\Stylist;
 use App\Domain\Barbershop\Exception\BookingSlotUnavailableException;
 use App\Domain\Barbershop\Exception\BookingTemporarilyUnavailableException;
 use App\Domain\Barbershop\Exception\InvalidBookingStartTimeException;
+use App\Domain\Barbershop\Exception\InvalidCustomerNameException;
 use App\UserInterface\GraphQL\GraphQLContext;
 use GraphQL\Type\Definition\Type;
 use Rebing\GraphQL\Support\Facades\GraphQL;
@@ -60,6 +61,14 @@ final class CreateBookingMutation extends Mutation
                 'stylist' => null,
                 'errors'  => [[
                     'field'   => 'startTime',
+                    'message' => $e->getMessage(),
+                ]],
+            ];
+        } catch (InvalidCustomerNameException $e) {
+            return [
+                'stylist' => null,
+                'errors'  => [[
+                    'field'   => 'customerName',
                     'message' => $e->getMessage(),
                 ]],
             ];

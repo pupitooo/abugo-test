@@ -30,6 +30,7 @@ final class CreateBookingTest extends TestCase
     private const START     = '2026-09-14T07:00:00+00:00';
     private const SLOT_UNAVAILABLE_ERROR = 'This time slot is no longer available.';
     private const BOOKING_TEMPORARILY_UNAVAILABLE_ERROR = 'Booking service is temporarily unavailable. Please try again.';
+    private const INVALID_CUSTOMER_NAME_ERROR = 'Customer name must not be blank.';
     private const INVALID_START_TIME_ERROR = 'Start time must use YYYY-MM-DDTHH:MM:SS+00:00; '
         . 'the booking must stay within UTC years 0000-9999.';
 
@@ -164,6 +165,29 @@ final class CreateBookingTest extends TestCase
 
         $this->assertCreateBookingSucceeded($result, self::STYLIST_A);
         self::assertSame(1, $this->bookingCount());
+    }
+
+    #[DataProvider('blankCustomerNames')]
+    public function testWhitespaceOnlyCustomerNameIsRejected(string $customerName): void
+    {
+        $result = $this->createBooking(
+            customerName: $customerName,
+            customerContact: 'customer@example.com',
+        );
+
+        self::assertArrayNotHasKey('errors', $result, 'Validation must not produce a top-level GraphQL error.');
+        self::assertNull($result['data']['createBooking']['stylist']);
+        self::assertSame([
+            ['field' => 'customerName', 'message' => self::INVALID_CUSTOMER_NAME_ERROR],
+        ], $result['data']['createBooking']['errors']);
+        self::assertSame(0, $this->bookingCount());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function blankCustomerNames(): iterable
+    {
+        yield 'ASCII spaces' => ['   '];
+        yield 'Unicode whitespace' => ["\u{00A0}\u{2003}\u{202F}\u{3000}"];
     }
 
     public function testStartTimeReturnedByAvailabilityCanBeSubmittedUnchanged(): void
@@ -589,6 +613,7 @@ final class CreateBookingTest extends TestCase
         string $stylistId = self::STYLIST_A,
         string $customerName = 'Test Customer',
         string $startTime = self::START,
+        ?string $customerContact = null,
     ): array {
         return $this->graphql()->query(self::CREATE_BOOKING_MUTATION, [
             'input' => [
@@ -596,7 +621,8 @@ final class CreateBookingTest extends TestCase
                 'serviceId'       => self::SERVICE,
                 'startTime'       => $startTime,
                 'customerName'    => $customerName,
-                'customerContact' => strtolower(str_replace(' ', '.', $customerName)) . '@example.com',
+                'customerContact' => $customerContact
+                    ?? strtolower(str_replace(' ', '.', $customerName)) . '@example.com',
             ],
             'serviceId' => self::SERVICE,
             'date'      => '2026-09-14',
