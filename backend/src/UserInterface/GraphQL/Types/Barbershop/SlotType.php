@@ -22,12 +22,12 @@ final class SlotType extends GraphQLType
         return [
             'startTime' => [
                 'type' => Type::nonNull(Type::string()),
-                'description' => 'Start time in ISO 8601 format',
+                'description' => 'Start time in UTC YYYY-MM-DDTHH:MM:SS+00:00 format',
                 'resolve' => fn(Slot $slot): string => UtcDateTimeFormatter::format($slot->startTime),
             ],
             'endTime' => [
                 'type' => Type::nonNull(Type::string()),
-                'description' => 'End time in ISO 8601 format',
+                'description' => 'End time in UTC YYYY-MM-DDTHH:MM:SS+00:00 format',
                 'resolve' => fn(Slot $slot): string => UtcDateTimeFormatter::format($slot->endTime),
             ],
         ];

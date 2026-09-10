@@ -2,11 +2,7 @@
 
 import { gql, useQuery } from '@apollo/client';
 import { useState } from 'react';
-import {
-  formatTimeInTimeZone,
-  formatTimeWithOffsetInTimeZone,
-  isAmbiguousLocalTimeInTimeZone,
-} from '@/lib/date-time';
+import { formatTimeWithOffsetInTimeZone } from '@/lib/date-time';
 import BookingForm, { type Slot } from './BookingForm';
 
 const GET_STYLIST_SLOTS = gql`
@@ -81,19 +77,6 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
   const serviceNode = data?.business?.services.edges.find((e) => e.node.id === serviceId)?.node;
   const stylistNode = serviceNode?.stylists.edges.find((e) => e.node.id === stylistId)?.node;
   const slots = slotOverride ?? stylistNode?.availableSlots.edges.map((e) => e.node) ?? [];
-  const timeLabelCounts = slots.reduce<Map<string, number>>((counts, slot) => {
-    const label = formatTimeInTimeZone(slot.startTime, timeZone);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-    return counts;
-  }, new Map());
-
-  function slotTimeLabel(iso: string): string {
-    const label = formatTimeInTimeZone(iso, timeZone);
-
-    return (timeLabelCounts.get(label) ?? 0) > 1 || isAmbiguousLocalTimeInTimeZone(iso, timeZone)
-      ? formatTimeWithOffsetInTimeZone(iso, timeZone)
-      : label;
-  }
 
   return (
     <div className="mt-3 border-t border-stone-700 pt-3">
@@ -133,7 +116,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
                     : 'border-stone-700 text-stone-300 bg-charcoal-900 hover:border-gold-500 hover:text-gold-400'
                 }`}
               >
-                {slotTimeLabel(slot.startTime)}
+                {formatTimeWithOffsetInTimeZone(slot.startTime, timeZone)}
               </button>
             ))}
           </div>
@@ -143,7 +126,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
               stylistId={stylistId}
               serviceId={serviceId}
               startTime={selectedSlot}
-              startTimeLabel={slotTimeLabel(selectedSlot)}
+              timeZone={timeZone}
               date={date}
               stylistName={stylistName}
               serviceName={serviceName}

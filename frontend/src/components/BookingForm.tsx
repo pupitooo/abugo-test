@@ -2,6 +2,7 @@
 
 import { gql, useMutation } from '@apollo/client';
 import { useState } from 'react';
+import { formatTimeWithOffsetInTimeZone } from '@/lib/date-time';
 
 const CREATE_BOOKING = gql`
   mutation CreateBooking($input: CreateBookingInput!, $serviceId: ID!, $date: String!) {
@@ -44,7 +45,7 @@ interface Props {
   stylistId: string;
   serviceId: string;
   startTime: string;
-  startTimeLabel: string;
+  timeZone: string;
   date: string;
   stylistName: string;
   serviceName: string;
@@ -56,7 +57,7 @@ export default function BookingForm({
   stylistId,
   serviceId,
   startTime,
-  startTimeLabel,
+  timeZone,
   date,
   stylistName,
   serviceName,
@@ -137,7 +138,7 @@ export default function BookingForm({
           <span className="text-stone-400">{stylistName}</span>
         </p>
         <p>
-          <span className="text-gold-500">{startTimeLabel}</span>
+          <span className="text-gold-500">{formatTimeWithOffsetInTimeZone(startTime, timeZone)}</span>
         </p>
       </div>
 

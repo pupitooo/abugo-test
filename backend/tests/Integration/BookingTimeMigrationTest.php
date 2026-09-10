@@ -110,7 +110,7 @@ final class BookingTimeMigrationTest extends TestCase
 
             try {
                 $this->migrate(Version20260910170000::class);
-                self::fail('The migration must reject a timestamp that the UTC Doctrine type cannot hydrate.');
+                self::fail('The migration must reject a timestamp outside the canonical UTC storage format.');
             } catch (AbortMigration $exception) {
                 self::assertStringContainsString($id, $exception->getMessage());
                 self::assertStringContainsString('YYYY-MM-DD HH:MM:SS', $exception->getMessage());

@@ -40,7 +40,7 @@ A simple online booking application for two barbershops. Customers can choose a 
 ### Booking Time Convention
 
 - Each business has an IANA timezone. Dates and opening hours are business-local wall time.
-- Booking timestamps represent absolute instants. GraphQL input requires an explicit offset; the database and GraphQL output use UTC.
+- Booking timestamps represent absolute instants. The backend runtime and persistence use UTC. The UI submits the slot timestamp returned by GraphQL unchanged and uses the business timezone only for display; GraphQL input and output use the exact UTC format `YYYY-MM-DDTHH:MM:SS+00:00` and second precision.
 - Existing businesses are migrated to `Europe/Prague`. Legacy booking timestamps are left unchanged because their discarded offsets cannot be reconstructed safely. The bundled application generated them in UTC, so they remain valid as UTC.
 - Before deployment, stop writes, back up the database, and audit bookings created by other clients or under a non-UTC PHP runtime. In a restored copy, convert both endpoints of every affected booking together to exact UTC `YYYY-MM-DD HH:MM:SS` values and import them in one transaction so the overlap trigger validates the result. Resolve unknown offsets or newly exposed conflicts manually, verify row counts and intervals, then replace the original database. The migration rejects unreadable timestamp shapes but cannot infer a discarded offset.
 
@@ -86,6 +86,13 @@ Paths prefixed with `backend/` are accepted as well. For shells or tools where a
 
 ```bash
 make test TEST=tests/Integration/CreateBookingTest.php
+```
+
+Frontend timezone formatting tests run with:
+
+```bash
+cd frontend
+yarn test
 ```
 
 ### Using the App

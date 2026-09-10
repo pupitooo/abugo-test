@@ -12,13 +12,14 @@ use App\Domain\Barbershop\Exception\InvalidBookingStartTimeException;
 use App\Domain\Barbershop\Repository\BookingRepositoryInterface;
 use App\Domain\ValueObject\UuidFactory;
 use DateTimeImmutable;
-use DateTimeInterface;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use DomainException;
 
 final class CreateBookingCommandHandler
 {
+    private const START_TIME_FORMAT = 'Y-m-d\TH:i:s\+00:00';
+
     public function __construct(
         private readonly BookingRepositoryInterface $bookingRepository,
         private readonly EntityManagerInterface $em,
@@ -36,7 +37,7 @@ final class CreateBookingCommandHandler
         $start = $this->parseStartTime($command->startTime);
         $end   = $start->modify("+{$service->getDurationMinutes()} minutes");
 
-        if (!$this->usesFourDigitYear($end)) {
+        if (strlen($end->format('Y')) !== 4) {
             throw new InvalidBookingStartTimeException();
         }
 
@@ -57,34 +58,16 @@ final class CreateBookingCommandHandler
 
     private function parseStartTime(string $value): DateTimeImmutable
     {
-        // Booking storage and overlap checks use second precision, so accept one explicit input precision as well.
-        if (
-            preg_match(
-                '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D',
-                $value,
-            ) !== 1
-        ) {
+        $dateTime = DateTimeImmutable::createFromFormat(
+            '!' . self::START_TIME_FORMAT,
+            $value,
+            new DateTimeZone('UTC'),
+        );
+
+        if ($dateTime === false || $dateTime->format(self::START_TIME_FORMAT) !== $value) {
             throw new InvalidBookingStartTimeException();
         }
 
-        $dateTime = DateTimeImmutable::createFromFormat('!' . DateTimeInterface::RFC3339, $value);
-        $errors = DateTimeImmutable::getLastErrors();
-
-        if ($dateTime === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
-            throw new InvalidBookingStartTimeException();
-        }
-
-        $utcDateTime = $dateTime->setTimezone(new DateTimeZone('UTC'));
-
-        if (!$this->usesFourDigitYear($utcDateTime)) {
-            throw new InvalidBookingStartTimeException();
-        }
-
-        return $utcDateTime;
-    }
-
-    private function usesFourDigitYear(DateTimeImmutable $dateTime): bool
-    {
-        return preg_match('/^\d{4}$/D', $dateTime->format('Y')) === 1;
+        return $dateTime;
     }
 }
