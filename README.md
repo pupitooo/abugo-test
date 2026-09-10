@@ -58,6 +58,29 @@ The default configuration uses `docker-compose.local.yml`, which maps ports to l
 - **Frontend** at [http://localhost:3000](http://localhost:3000)
 - **GraphQL API** at [http://localhost:8080/graphql](http://localhost:8080/graphql)
 
+### Running Tests
+
+Execute the complete PHPUnit suite with:
+
+```bash
+make test
+```
+
+This uses a one-off backend container, so the application does not need to be running. The command builds the backend image and installs Composer dependencies when needed.
+
+Pass a directory or file to run only that selection:
+
+```bash
+make test tests/Integration
+make test tests/Integration/CreateBookingTest.php
+```
+
+Paths prefixed with `backend/` are accepted as well. For shells or tools where a positional path is inconvenient, use the equivalent `TEST` variable:
+
+```bash
+make test TEST=tests/Integration/CreateBookingTest.php
+```
+
 ### Using the App
 
 At [http://localhost:3000](http://localhost:3000) you'll find a list of available barbershops. Click on one to open its detail page, where you can:
@@ -94,6 +117,7 @@ make db-reset    # run migrations and load fixtures
 make fixtures    # load fixtures only (clears existing data)
 make bash        # open a shell in the backend container
 make logs        # tail backend container logs
+make test        # run all backend tests (optionally append a directory or file)
 ```
 
 ---
