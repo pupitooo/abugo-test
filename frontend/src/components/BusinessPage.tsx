@@ -2,6 +2,7 @@
 
 import { gql, useQuery } from '@apollo/client';
 import { useState } from 'react';
+import { dateKeyInTimeZone } from '@/lib/date-time';
 import StylistSlots from './StylistSlots';
 
 const GET_BUSINESS_BY_SLUG = gql`
@@ -9,6 +10,7 @@ const GET_BUSINESS_BY_SLUG = gql`
     businessBySlug(slug: $slug) {
       id
       name
+      timezone
       services {
         edges {
           node {
@@ -52,6 +54,7 @@ interface GetBusinessData {
   businessBySlug: {
     id: string;
     name: string;
+    timezone: string;
     services: { edges: { node: Service }[] };
   } | null;
 }
@@ -60,14 +63,10 @@ interface Props {
   slug: string;
 }
 
-function todayString(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function BusinessPage({ slug }: Props) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedStylistId, setSelectedStylistId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(todayString);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const { data, loading, error } = useQuery<GetBusinessData>(GET_BUSINESS_BY_SLUG, {
     variables: { slug },
@@ -102,6 +101,7 @@ export default function BusinessPage({ slug }: Props) {
   }
 
   const services = business.services.edges.map((e) => e.node);
+  const activeDate = selectedDate ?? dateKeyInTimeZone(new Date(), business.timezone);
 
   function toggleService(id: string) {
     setSelectedServiceId((prev) => {
@@ -214,12 +214,14 @@ export default function BusinessPage({ slug }: Props) {
                         {activeStylist && (
                           <div className="px-6 py-5">
                             <StylistSlots
+                              key={`${service.id}:${activeStylist.id}:${activeDate}`}
                               businessId={business.id}
                               stylistId={activeStylist.id}
                               stylistName={activeStylist.name}
                               serviceId={service.id}
                               serviceName={service.name}
-                              date={selectedDate}
+                              timeZone={business.timezone}
+                              date={activeDate}
                               onDateChange={setSelectedDate}
                             />
                           </div>

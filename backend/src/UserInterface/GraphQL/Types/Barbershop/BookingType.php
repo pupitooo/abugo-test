@@ -7,7 +7,7 @@ namespace App\UserInterface\GraphQL\Types\Barbershop;
 use App\Domain\Barbershop\Entity\Booking;
 use App\Domain\Barbershop\Entity\Service;
 use App\Domain\Barbershop\Entity\Stylist;
-use DateTimeInterface;
+use App\UserInterface\GraphQL\UtcDateTimeFormatter;
 use GraphQL\Type\Definition\Type;
 use Rebing\GraphQL\Support\Facades\GraphQL;
 use Rebing\GraphQL\Support\Type as GraphQLType;
@@ -40,13 +40,13 @@ final class BookingType extends GraphQLType
             ],
             'startTime' => [
                 'type'        => Type::nonNull(Type::string()),
-                'description' => 'Start time in ISO 8601 format',
-                'resolve'     => fn(Booking $booking): string => $booking->getStartTime()->format(DateTimeInterface::ATOM),
+                'description' => 'Start time in UTC YYYY-MM-DDTHH:MM:SS+00:00 format',
+                'resolve'     => fn(Booking $booking): string => UtcDateTimeFormatter::format($booking->getStartTime()),
             ],
             'endTime' => [
                 'type'        => Type::nonNull(Type::string()),
-                'description' => 'End time in ISO 8601 format',
-                'resolve'     => fn(Booking $booking): string => $booking->getEndTime()->format(DateTimeInterface::ATOM),
+                'description' => 'End time in UTC YYYY-MM-DDTHH:MM:SS+00:00 format',
+                'resolve'     => fn(Booking $booking): string => UtcDateTimeFormatter::format($booking->getEndTime()),
             ],
             'status' => [
                 'type'        => Type::nonNull(GraphQL::type('BarbershopBookingStatus')),
