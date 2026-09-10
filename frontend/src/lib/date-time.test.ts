@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { dateKeyInTimeZone, formatTimeWithOffsetInTimeZone } from './date-time';
+import {
+  dateKeyInTimeZone,
+  formatTimeWithOffsetInTimeZone,
+  formatTimeZoneLabel,
+} from './date-time';
 
 const PRAGUE = 'Europe/Prague';
 
@@ -29,5 +33,15 @@ describe('business timezone formatting', () => {
       formatTimeWithOffsetInTimeZone('2026-10-25T01:30:00+00:00', PRAGUE),
       '02:30 GMT+1',
     );
+  });
+
+  it('turns an IANA timezone into a readable city label without losing the identifier', () => {
+    assert.equal(formatTimeZoneLabel(PRAGUE), 'Prague (Europe/Prague)');
+    assert.equal(
+      formatTimeZoneLabel('America/Argentina/Buenos_Aires'),
+      'Buenos Aires (America/Argentina/Buenos_Aires)',
+    );
+    assert.equal(formatTimeZoneLabel('UTC'), 'UTC');
+    assert.equal(formatTimeZoneLabel('Etc/GMT+5'), 'Etc/GMT+5');
   });
 });

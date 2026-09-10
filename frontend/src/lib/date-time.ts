@@ -46,6 +46,16 @@ export function formatOffsetInTimeZone(iso: string, timeZone: string): string {
   }).formatToParts(new Date(iso)).find((part) => part.type === 'timeZoneName')?.value ?? timeZone;
 }
 
+export function formatTimeZoneLabel(timeZone: string): string {
+  if (timeZone.startsWith('Etc/')) return timeZone;
+
+  const segments = timeZone.split('/');
+  if (segments.length === 1) return timeZone;
+
+  const city = segments.at(-1)?.replace(/_/g, ' ') ?? timeZone;
+  return `${city} (${timeZone})`;
+}
+
 export function formatDateInTimeZone(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat(LOCALE, {
     timeZone,

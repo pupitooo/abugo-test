@@ -2,7 +2,11 @@
 
 import { gql, useQuery } from '@apollo/client';
 import { useState } from 'react';
-import { formatTimeWithOffsetInTimeZone } from '@/lib/date-time';
+import {
+  formatTimeInTimeZone,
+  formatTimeWithOffsetInTimeZone,
+  formatTimeZoneLabel,
+} from '@/lib/date-time';
 import BookingForm, { type Slot } from './BookingForm';
 
 const GET_STYLIST_SLOTS = gql`
@@ -77,6 +81,19 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
   const serviceNode = data?.business?.services.edges.find((e) => e.node.id === serviceId)?.node;
   const stylistNode = serviceNode?.stylists.edges.find((e) => e.node.id === stylistId)?.node;
   const slots = slotOverride ?? stylistNode?.availableSlots.edges.map((e) => e.node) ?? [];
+  const timeLabelCounts = slots.reduce<Map<string, number>>((counts, slot) => {
+    const label = formatTimeInTimeZone(slot.startTime, timeZone);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+    return counts;
+  }, new Map());
+
+  function slotTimeLabel(iso: string): string {
+    const label = formatTimeInTimeZone(iso, timeZone);
+
+    return (timeLabelCounts.get(label) ?? 0) > 1
+      ? formatTimeWithOffsetInTimeZone(iso, timeZone)
+      : label;
+  }
 
   return (
     <div className="mt-3 border-t border-stone-700 pt-3">
@@ -89,6 +106,23 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
           className="bg-charcoal-900 border border-stone-700 text-stone-200 text-sm px-3 py-1.5 rounded-sm focus:outline-none focus:border-gold-500 [color-scheme:dark]"
         />
       </div>
+
+      <p className="mb-3 flex items-center gap-1.5 text-xs text-stone-500">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          className="h-3.5 w-3.5 shrink-0"
+        >
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3 2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span>All times are in the branch&apos;s local time</span>
+        <span aria-hidden="true">·</span>
+        <span className="text-stone-400">{formatTimeZoneLabel(timeZone)}</span>
+      </p>
 
       {loading && (
         <div className="flex items-center gap-2 text-stone-500 text-xs">
@@ -116,7 +150,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
                     : 'border-stone-700 text-stone-300 bg-charcoal-900 hover:border-gold-500 hover:text-gold-400'
                 }`}
               >
-                {formatTimeWithOffsetInTimeZone(slot.startTime, timeZone)}
+                {slotTimeLabel(slot.startTime)}
               </button>
             ))}
           </div>
@@ -126,7 +160,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
               stylistId={stylistId}
               serviceId={serviceId}
               startTime={selectedSlot}
-              timeZone={timeZone}
+              startTimeLabel={slotTimeLabel(selectedSlot)}
               date={date}
               stylistName={stylistName}
               serviceName={serviceName}
