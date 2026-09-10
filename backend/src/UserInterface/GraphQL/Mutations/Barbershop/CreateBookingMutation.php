@@ -8,6 +8,7 @@ use App\Application\Barbershop\Command\CreateBooking\CreateBookingCommand;
 use App\Application\Barbershop\Query\GetStylist\GetStylistQuery;
 use App\Domain\Barbershop\Entity\Stylist;
 use App\Domain\Barbershop\Exception\BookingSlotUnavailableException;
+use App\Domain\Barbershop\Exception\BookingTemporarilyUnavailableException;
 use App\UserInterface\GraphQL\GraphQLContext;
 use GraphQL\Type\Definition\Type;
 use Rebing\GraphQL\Support\Facades\GraphQL;
@@ -53,6 +54,14 @@ final class CreateBookingMutation extends Mutation
             $stylist = $context->queryBus->ask(new GetStylistQuery($input['stylistId']));
 
             return ['stylist' => $stylist, 'errors' => []];
+        } catch (BookingTemporarilyUnavailableException $e) {
+            return [
+                'stylist' => null,
+                'errors'  => [[
+                    'field'   => null,
+                    'message' => $e->getMessage(),
+                ]],
+            ];
         } catch (BookingSlotUnavailableException $e) {
             return [
                 'stylist' => null,

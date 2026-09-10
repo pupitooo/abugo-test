@@ -6,10 +6,12 @@ namespace App\Infrastructure\Barbershop\Repository;
 
 use App\Domain\Barbershop\Entity\Booking;
 use App\Domain\Barbershop\Exception\BookingSlotUnavailableException;
+use App\Domain\Barbershop\Exception\BookingTemporarilyUnavailableException;
 use App\Domain\Barbershop\Exception\NotFoundException;
 use App\Domain\Barbershop\Repository\BookingRepositoryInterface;
 use App\Domain\ValueObject\Uuid;
 use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\ORM\EntityManagerInterface;
 
 final class DoctrineBookingRepository implements BookingRepositoryInterface
@@ -31,6 +33,8 @@ final class DoctrineBookingRepository implements BookingRepositoryInterface
         try {
             $this->em->persist($booking);
             $this->em->flush();
+        } catch (LockWaitTimeoutException $exception) {
+            throw new BookingTemporarilyUnavailableException(previous: $exception);
         } catch (DriverException $exception) {
             if (!self::isSlotUnavailableViolation($exception)) {
                 throw $exception;

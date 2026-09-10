@@ -27,6 +27,7 @@ final class CreateBookingTest extends TestCase
     private const SERVICE   = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
     private const START     = '2026-09-14T09:00:00+00:00';
     private const SLOT_UNAVAILABLE_ERROR = 'This time slot is no longer available.';
+    private const BOOKING_TEMPORARILY_UNAVAILABLE_ERROR = 'Booking service is temporarily unavailable. Please try again.';
 
     private const CREATE_BOOKING_MUTATION = <<<'GRAPHQL'
         mutation CreateBooking($input: CreateBookingInput!, $serviceId: ID!, $date: String!) {
@@ -246,6 +247,29 @@ final class CreateBookingTest extends TestCase
 
         $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
         $this->assertCreateBookingRejected($conflict);
+    }
+
+    public function testDatabaseLockTimeoutIsReturnedAsDomainGraphqlError(): void
+    {
+        $lockingConnection = new \PDO(
+            'sqlite:' . $this->databasePath,
+            options: [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION],
+        );
+        $lockingConnection->exec('BEGIN IMMEDIATE');
+        $this->entityManager()->getConnection()->executeStatement('PRAGMA busy_timeout = 0');
+
+        try {
+            $result = $this->createBooking(customerName: 'Locked Customer');
+        } finally {
+            $lockingConnection->exec('ROLLBACK');
+        }
+
+        self::assertArrayNotHasKey('errors', $result, 'A lock timeout must not produce a top-level GraphQL error.');
+        self::assertNull($result['data']['createBooking']['stylist']);
+        self::assertSame([
+            ['field' => null, 'message' => self::BOOKING_TEMPORARILY_UNAVAILABLE_ERROR],
+        ], $result['data']['createBooking']['errors']);
+        self::assertSame(0, $this->bookingCount());
     }
 
     public function testConcurrentDatabaseWritesCreateOnlyOneActiveBooking(): void
