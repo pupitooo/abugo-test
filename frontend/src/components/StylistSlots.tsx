@@ -2,6 +2,7 @@
 
 import { gql, useQuery } from '@apollo/client';
 import { useState } from 'react';
+import { formatTimeInTimeZone, formatTimeWithOffsetInTimeZone } from '@/lib/date-time';
 import BookingForm, { type Slot } from './BookingForm';
 
 const GET_STYLIST_SLOTS = gql`
@@ -59,15 +60,12 @@ interface Props {
   stylistName: string;
   serviceId: string;
   serviceName: string;
+  timeZone: string;
   date: string;
   onDateChange: (date: string) => void;
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-export default function StylistSlots({ businessId, stylistId, stylistName, serviceId, serviceName, date, onDateChange }: Props) {
+export default function StylistSlots({ businessId, stylistId, stylistName, serviceId, serviceName, timeZone, date, onDateChange }: Props) {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [slotOverride, setSlotOverride] = useState<Slot[] | null>(null);
 
@@ -79,6 +77,19 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
   const serviceNode = data?.business?.services.edges.find((e) => e.node.id === serviceId)?.node;
   const stylistNode = serviceNode?.stylists.edges.find((e) => e.node.id === stylistId)?.node;
   const slots = slotOverride ?? stylistNode?.availableSlots.edges.map((e) => e.node) ?? [];
+  const timeLabelCounts = slots.reduce<Map<string, number>>((counts, slot) => {
+    const label = formatTimeInTimeZone(slot.startTime, timeZone);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+    return counts;
+  }, new Map());
+
+  function slotTimeLabel(iso: string): string {
+    const label = formatTimeInTimeZone(iso, timeZone);
+
+    return (timeLabelCounts.get(label) ?? 0) > 1
+      ? formatTimeWithOffsetInTimeZone(iso, timeZone)
+      : label;
+  }
 
   return (
     <div className="mt-3 border-t border-stone-700 pt-3">
@@ -118,7 +129,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
                     : 'border-stone-700 text-stone-300 bg-charcoal-900 hover:border-gold-500 hover:text-gold-400'
                 }`}
               >
-                {formatTime(slot.startTime)}
+                {slotTimeLabel(slot.startTime)}
               </button>
             ))}
           </div>
@@ -128,6 +139,7 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
               stylistId={stylistId}
               serviceId={serviceId}
               startTime={selectedSlot}
+              startTimeLabel={slotTimeLabel(selectedSlot)}
               date={date}
               stylistName={stylistName}
               serviceName={serviceName}

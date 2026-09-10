@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\UserInterface\GraphQL\Types\Barbershop;
 
 use App\Domain\Barbershop\ValueObject\Slot;
-use DateTimeInterface;
+use App\UserInterface\GraphQL\UtcDateTimeFormatter;
 use GraphQL\Type\Definition\Type;
 use Rebing\GraphQL\Support\Type as GraphQLType;
 
@@ -23,12 +23,12 @@ final class SlotType extends GraphQLType
             'startTime' => [
                 'type' => Type::nonNull(Type::string()),
                 'description' => 'Start time in ISO 8601 format',
-                'resolve' => fn(Slot $slot): string => $slot->startTime->format(DateTimeInterface::ATOM),
+                'resolve' => fn(Slot $slot): string => UtcDateTimeFormatter::format($slot->startTime),
             ],
             'endTime' => [
                 'type' => Type::nonNull(Type::string()),
                 'description' => 'End time in ISO 8601 format',
-                'resolve' => fn(Slot $slot): string => $slot->endTime->format(DateTimeInterface::ATOM),
+                'resolve' => fn(Slot $slot): string => UtcDateTimeFormatter::format($slot->endTime),
             ],
         ];
     }

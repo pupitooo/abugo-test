@@ -21,6 +21,7 @@ nettrine.dbal:
         path: %appDir%/../var/db.sqlite
         types:
             uuid: App\Infrastructure\Doctrine\Type\UuidType
+            datetime_immutable: App\Infrastructure\Doctrine\Type\UtcDateTimeImmutableType
 
 nettrine.orm.xml:
     mapping:

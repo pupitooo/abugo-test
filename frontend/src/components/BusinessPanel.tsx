@@ -2,9 +2,13 @@
 
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { useState } from 'react';
+import { dateKeyInTimeZone, formatDateInTimeZone, formatTimeInTimeZone } from '@/lib/date-time';
 
 const GET_BUSINESS_BOOKINGS = gql`
   query GetBusinessBookings($businessId: ID!) {
+    business(id: $businessId) {
+      timezone
+    }
     businessBookings(businessId: $businessId) {
       edges {
         node {
@@ -68,6 +72,7 @@ interface Booking {
 }
 
 interface GetBusinessBookingsData {
+  business: { timezone: string } | null;
   businessBookings: { edges: { node: Booking }[] };
 }
 
@@ -78,18 +83,6 @@ interface MutationData {
 
 interface Props {
   businessId: string;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('cs-CZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function dateKey(iso: string): string {
-  return iso.slice(0, 10);
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -158,10 +151,11 @@ export default function BusinessPanel({ businessId }: Props) {
     ...b,
     status: (localStatuses[b.id] ?? b.status) as Booking['status'],
   }));
+  const timeZone = data?.business?.timezone ?? 'UTC';
 
   // Group by date
   const byDay = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
-    const key = dateKey(b.startTime);
+    const key = dateKeyInTimeZone(b.startTime, timeZone);
     (acc[key] ??= []).push(b);
     return acc;
   }, {});
@@ -177,7 +171,7 @@ export default function BusinessPanel({ businessId }: Props) {
       {sortedDays.map((day) => (
         <section key={day}>
           <h3 className="text-xs tracking-[0.25em] uppercase text-gold-500 font-medium mb-4 capitalize">
-            {formatDate(day)}
+            {formatDateInTimeZone(byDay[day][0].startTime, timeZone)}
           </h3>
 
           <div className="space-y-px">
@@ -192,7 +186,7 @@ export default function BusinessPanel({ businessId }: Props) {
                 >
                   {/* Time */}
                   <div className="text-gold-400 font-light text-lg tabular-nums shrink-0 w-28">
-                    {formatTime(booking.startTime)}–{formatTime(booking.endTime)}
+                    {formatTimeInTimeZone(booking.startTime, timeZone)}–{formatTimeInTimeZone(booking.endTime, timeZone)}
                   </div>
 
                   {/* Details */}

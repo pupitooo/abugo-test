@@ -37,6 +37,13 @@ A simple online booking application for two barbershops. Customers can choose a 
 - **Frontend** – Next.js (React, Apollo Client, Tailwind CSS)
 - Communication goes through a GraphQL endpoint on the backend
 
+### Booking Time Convention
+
+- Each business has an IANA timezone. Dates and opening hours are business-local wall time.
+- Booking timestamps represent absolute instants. GraphQL input requires an explicit offset; the database and GraphQL output use UTC.
+- Existing businesses are migrated to `Europe/Prague`. Legacy booking timestamps are left unchanged because their discarded offsets cannot be reconstructed safely. The bundled application generated them in UTC, so they remain valid as UTC.
+- Before deployment, back up and audit bookings created by other clients or under a non-UTC PHP runtime. Convert rows with a known original offset to UTC; resolve unknown values manually before accepting new bookings.
+
 ### Getting Started
 
 #### Requirements

@@ -10,6 +10,11 @@
 
         <field name="name" type="string" />
         <field name="slug" type="string" unique="true" />
+        <field name="timezone" type="string" length="64">
+            <options>
+                <option name="default">Europe/Prague</option>
+            </options>
+        </field>
 
         <one-to-many field="services"
                      target-entity="App\Domain\Barbershop\Entity\Service"

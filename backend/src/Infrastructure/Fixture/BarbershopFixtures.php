@@ -23,6 +23,7 @@ final class BarbershopFixtures implements FixtureInterface
             Uuid::fromString('11111111-1111-1111-1111-111111111111'),
             "Gentlemen's Cut",
             'gentlemens-cut',
+            'Europe/Prague',
         );
 
         // Mon–Fri 09:00–18:00, Sat 09:00–14:00, closed Sunday
@@ -82,6 +83,7 @@ final class BarbershopFixtures implements FixtureInterface
             Uuid::fromString('22222222-2222-2222-2222-222222222222'),
             'Luxury Barber Studio',
             'luxury-barber-studio',
+            'Europe/Prague',
         );
 
         // Tue–Sat 10:00–20:00, closed Mon and Sun
