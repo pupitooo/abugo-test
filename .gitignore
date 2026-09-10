@@ -1,0 +1,18 @@
+.DS_Store
+.idea/
+.env.local
+/backend/vendor/
+/backend/temp/*
+!/backend/temp/.gitkeep
+/backend/logs/*
+!/backend/logs/.gitkeep
+/backend/var/*
+!/backend/var/.gitkeep
+/frontend/node_modules/
+/frontend/.next/
+
+# Local credentials used by AI workflows. Keep examples, never the real token.
+/.ai/secrets/*
+!/.ai/secrets/*.example
+/.ai/gh-config/*
+!/.ai/gh-config/.gitkeep
