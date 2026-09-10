@@ -280,21 +280,25 @@ final class CreateBookingTest extends TestCase
         try {
             $firstWorker = $this->startConcurrentBookingWorker(
                 'eeeeeeee-eeee-eeee-eeee-000000000001',
-                500,
+                'holder',
             );
             $secondWorker = $this->startConcurrentBookingWorker(
                 'eeeeeeee-eeee-eeee-eeee-000000000002',
-                0,
+                'contender',
             );
 
-            fwrite($firstWorker['pipes'][0], "GO\n");
-            fflush($firstWorker['pipes'][0]);
+            $this->sendWorkerCommand($firstWorker, 'GO');
             self::assertSame('LOCKED', $this->readWorkerLine($firstWorker['pipes'][1]));
 
-            fwrite($secondWorker['pipes'][0], "GO\n");
-            fflush($secondWorker['pipes'][0]);
+            $this->sendWorkerCommand($secondWorker, 'GO');
+            $blockedResult = $this->readWorkerResult($secondWorker['pipes'][1]);
+            self::assertSame('blocked', $blockedResult['status']);
+            self::assertSame(5, $blockedResult['code']);
 
+            $this->sendWorkerCommand($firstWorker, 'COMMIT');
             $firstResult = $this->readWorkerResult($firstWorker['pipes'][1]);
+
+            $this->sendWorkerCommand($secondWorker, 'RETRY');
             $secondResult = $this->readWorkerResult($secondWorker['pipes'][1]);
             $firstError = stream_get_contents($firstWorker['pipes'][2]);
             $secondError = stream_get_contents($secondWorker['pipes'][2]);
@@ -427,7 +431,7 @@ final class CreateBookingTest extends TestCase
      *     pipes: array{0: resource, 1: resource, 2: resource}
      * }
      */
-    private function startConcurrentBookingWorker(string $bookingId, int $lockDurationMilliseconds): array
+    private function startConcurrentBookingWorker(string $bookingId, string $mode): array
     {
         $process = proc_open(
             [
@@ -435,7 +439,7 @@ final class CreateBookingTest extends TestCase
                 dirname(__DIR__) . '/Support/concurrent-booking-worker.php',
                 $this->databasePath,
                 $bookingId,
-                (string) $lockDurationMilliseconds,
+                $mode,
             ],
             [
                 0 => ['pipe', 'r'],
@@ -451,6 +455,18 @@ final class CreateBookingTest extends TestCase
         self::assertSame('READY', $this->readWorkerLine($pipes[1]));
 
         return ['process' => $process, 'pipes' => $pipes];
+    }
+
+    /**
+     * @param array{
+     *     process: resource,
+     *     pipes: array{0: resource, 1: resource, 2: resource}
+     * } $worker
+     */
+    private function sendWorkerCommand(array $worker, string $command): void
+    {
+        self::assertNotFalse(fwrite($worker['pipes'][0], $command . "\n"));
+        self::assertTrue(fflush($worker['pipes'][0]));
     }
 
     /** @param resource $stream */
