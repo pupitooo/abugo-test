@@ -349,14 +349,14 @@ final class CreateBookingTest extends TestCase
         self::assertNotContains('09:00', $availableStartTimes);
     }
 
-    public function testDuplicateBookingIsRejectedAndOnlyOneRowRemains(): void
+    public function testDuplicateBookingIsReturnedAsDomainErrorAndNotPersisted(): void
     {
         $first = $this->createBooking(customerName: 'First Customer');
-        $second = $this->createBooking(customerName: 'Second Customer');
+        $conflict = $this->createBooking(customerName: 'Second Customer');
 
         $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
+        $this->assertCreateBookingRejected($conflict);
         self::assertSame(1, $this->bookingCount(), 'A conflicting booking must not be persisted.');
-        $this->assertCreateBookingRejected($second);
     }
 
     public function testSameTimeForDifferentStylistIsAllowed(): void
@@ -436,15 +436,6 @@ final class CreateBookingTest extends TestCase
                 'SELECT status FROM barbershop_bookings ORDER BY status',
             ),
         );
-    }
-
-    public function testBookingConflictIsReturnedAsDomainGraphqlError(): void
-    {
-        $first = $this->createBooking(customerName: 'First Customer');
-        $conflict = $this->createBooking(customerName: 'Second Customer');
-
-        $this->assertCreateBookingSucceeded($first, self::STYLIST_A);
-        $this->assertCreateBookingRejected($conflict);
     }
 
     public function testDatabaseLockTimeoutIsReturnedAsDomainGraphqlError(): void
