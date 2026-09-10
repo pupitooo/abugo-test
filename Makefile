@@ -1,4 +1,4 @@
-.PHONY: help up stop down restart bash comin comdu logs fixtures db-reset
+.PHONY: help up stop down restart bash comin comdu logs fixtures db-reset test
 
 help: ## Print help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} \
@@ -43,6 +43,13 @@ db-reset: checkAppIsRunning ## Reset DB: run migrations and reload fixtures
 	@$(BASH) -c 'php bin/console migrations:migrate --no-interaction'
 	@$(BASH) -c 'php bin/console fixtures:load'
 
+# Section: Tests
+test: backend/.env.local frontend/.env.local ## Run all tests or a selected path (make test [path])
+	@$(DOCKER_COMPOSE) run --rm --build --no-deps -T --quiet-build --quiet $(APP_CONTAINER) \
+		composer install --no-interaction --prefer-dist --no-progress --quiet
+	@$(DOCKER_COMPOSE) run --rm --no-deps -T --quiet $(APP_CONTAINER) \
+		./vendor/bin/phpunit --configuration phpunit.xml --testdox $(if $(PHPUNIT_TARGET),"$(PHPUNIT_TARGET)")
+
 backend/.env.local:
 	@sed -e "s/{MAKEFILE_UID}/$(shell id -u)/g" \
 		-e "s/{MAKEFILE_GID}/$(shell id -g)/g" backend/.env.local.example > backend/.env.local
@@ -75,6 +82,10 @@ FRONTEND_CONTAINER = frontend
 BASH = $(DOCKER_COMPOSE) exec $(APP_CONTAINER) bash
 FRONTEND_BASH = $(DOCKER_COMPOSE) exec $(FRONTEND_CONTAINER) sh
 APP_CONTAINER_STATUS = $(shell docker inspect -f '{{.State.Running}}' $$(docker compose ps -q $(APP_CONTAINER)) 2>/dev/null)
+
+PHPUNIT_TARGET := $(if $(TEST),$(TEST),$(word 2,$(MAKECMDGOALS)))
+PHPUNIT_TARGET := $(patsubst $(CURDIR)/backend/%,%,$(PHPUNIT_TARGET))
+PHPUNIT_TARGET := $(patsubst backend/%,%,$(PHPUNIT_TARGET))
 
 %:
 	@:
