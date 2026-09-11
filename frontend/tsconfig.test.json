@@ -8,5 +8,10 @@
     "outDir": ".test-dist",
     "rootDir": "src/lib"
   },
-  "include": ["src/lib/date-time.ts", "src/lib/date-time.test.ts"]
+  "include": [
+    "src/lib/booking-submission.ts",
+    "src/lib/booking-submission.test.ts",
+    "src/lib/date-time.ts",
+    "src/lib/date-time.test.ts"
+  ]
 }

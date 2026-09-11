@@ -1,7 +1,8 @@
 'use client';
 
 import { gql, useQuery } from '@apollo/client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { BookingSubmissionLock } from '@/lib/booking-submission';
 import { dateKeyInTimeZone } from '@/lib/date-time';
 import StylistSlots from './StylistSlots';
 
@@ -67,6 +68,9 @@ export default function BusinessPage({ slug }: Props) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedStylistId, setSelectedStylistId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [bookingInProgress, setBookingInProgress] = useState(false);
+  const [bookingStateUncertain, setBookingStateUncertain] = useState(false);
+  const bookingSubmissionLock = useRef(false) satisfies BookingSubmissionLock;
 
   const { data, loading, error } = useQuery<GetBusinessData>(GET_BUSINESS_BY_SLUG, {
     variables: { slug },
@@ -102,8 +106,11 @@ export default function BusinessPage({ slug }: Props) {
 
   const services = business.services.edges.map((e) => e.node);
   const activeDate = selectedDate ?? dateKeyInTimeZone(new Date(), business.timezone);
+  const bookingControlsDisabled = bookingInProgress || bookingStateUncertain;
 
   function toggleService(id: string) {
+    if (bookingControlsDisabled) return;
+
     setSelectedServiceId((prev) => {
       if (prev === id) {
         setSelectedStylistId(null);
@@ -149,7 +156,8 @@ export default function BusinessPage({ slug }: Props) {
                   {/* Service row */}
                   <button
                     onClick={() => toggleService(service.id)}
-                    className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-stone-800/40 transition-colors group"
+                    disabled={bookingControlsDisabled}
+                    className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-stone-800/40 disabled:opacity-60 disabled:hover:bg-transparent transition-colors group"
                   >
                     <div className="flex items-center gap-4">
                       <span className="w-1 h-6 bg-gold-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
@@ -185,7 +193,8 @@ export default function BusinessPage({ slug }: Props) {
                               <button
                                 key={stylist.id}
                                 onClick={() => setSelectedStylistId(stylist.id)}
-                                className={`flex items-center gap-2.5 px-5 py-3.5 text-sm transition-colors border-b-2 -mb-px ${
+                                disabled={bookingControlsDisabled}
+                                className={`flex items-center gap-2.5 px-5 py-3.5 text-sm disabled:opacity-60 transition-colors border-b-2 -mb-px ${
                                   active
                                     ? 'border-gold-500 text-gold-400'
                                     : 'border-transparent text-stone-400 hover:text-stone-200'
@@ -223,6 +232,10 @@ export default function BusinessPage({ slug }: Props) {
                               timeZone={business.timezone}
                               date={activeDate}
                               onDateChange={setSelectedDate}
+                              interactionDisabled={bookingControlsDisabled}
+                              onSubmittingChange={setBookingInProgress}
+                              onUnsafeSubmission={() => setBookingStateUncertain(true)}
+                              submissionLock={bookingSubmissionLock}
                             />
                           </div>
                         )}

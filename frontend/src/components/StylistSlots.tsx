@@ -7,7 +7,8 @@ import {
   formatTimeWithOffsetInTimeZone,
   formatTimeZoneLabel,
 } from '@/lib/date-time';
-import BookingForm, { type Slot } from './BookingForm';
+import type { BookingSubmissionLock, Slot } from '@/lib/booking-submission';
+import BookingForm from './BookingForm';
 
 const GET_STYLIST_SLOTS = gql`
   query GetStylistSlots($businessId: ID!, $serviceId: ID!, $date: String!) {
@@ -67,20 +68,50 @@ interface Props {
   timeZone: string;
   date: string;
   onDateChange: (date: string) => void;
+  interactionDisabled: boolean;
+  onSubmittingChange: (submitting: boolean) => void;
+  onUnsafeSubmission: () => void;
+  submissionLock: BookingSubmissionLock;
 }
 
-export default function StylistSlots({ businessId, stylistId, stylistName, serviceId, serviceName, timeZone, date, onDateChange }: Props) {
+function getSlots(
+  data: GetStylistSlotsData | undefined,
+  serviceId: string,
+  stylistId: string,
+): Slot[] {
+  const service = data?.business?.services.edges.find((edge) => edge.node.id === serviceId)?.node;
+  const stylist = service?.stylists.edges.find((edge) => edge.node.id === stylistId)?.node;
+
+  return stylist?.availableSlots.edges.map((edge) => edge.node) ?? [];
+}
+
+export default function StylistSlots({
+  businessId,
+  stylistId,
+  stylistName,
+  serviceId,
+  serviceName,
+  timeZone,
+  date,
+  onDateChange,
+  interactionDisabled,
+  onSubmittingChange,
+  onUnsafeSubmission,
+  submissionLock,
+}: Props) {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [slotOverride, setSlotOverride] = useState<Slot[] | null>(null);
+  const [availabilityUnknown, setAvailabilityUnknown] = useState(false);
 
-  const { data, loading, error } = useQuery<GetStylistSlotsData>(GET_STYLIST_SLOTS, {
+  const { data, loading, error, refetch } = useQuery<GetStylistSlotsData>(GET_STYLIST_SLOTS, {
     variables: { businessId, serviceId, date },
-    onCompleted: () => setSlotOverride(null),
+    onCompleted: () => {
+      setSlotOverride(null);
+      setAvailabilityUnknown(false);
+    },
   });
 
-  const serviceNode = data?.business?.services.edges.find((e) => e.node.id === serviceId)?.node;
-  const stylistNode = serviceNode?.stylists.edges.find((e) => e.node.id === stylistId)?.node;
-  const slots = slotOverride ?? stylistNode?.availableSlots.edges.map((e) => e.node) ?? [];
+  const slots = slotOverride ?? getSlots(data, serviceId, stylistId);
   const timeLabelCounts = slots.reduce<Map<string, number>>((counts, slot) => {
     const label = formatTimeInTimeZone(slot.startTime, timeZone);
     counts.set(label, (counts.get(label) ?? 0) + 1);
@@ -95,6 +126,24 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
       : label;
   }
 
+  async function reconcileSlots(): Promise<void> {
+    try {
+      const result = await refetch();
+      setSlotOverride(getSlots(result.data, serviceId, stylistId));
+      setAvailabilityUnknown(false);
+    } catch (refetchError) {
+      setSlotOverride([]);
+      setAvailabilityUnknown(true);
+      throw refetchError;
+    }
+  }
+
+  function handleUnsafeSubmission(): void {
+    setSlotOverride([]);
+    setAvailabilityUnknown(true);
+    onUnsafeSubmission();
+  }
+
   return (
     <div className="mt-3 border-t border-stone-700 pt-3">
       <div className="flex items-center gap-3 mb-3">
@@ -103,7 +152,8 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
           type="date"
           value={date}
           onChange={(e) => onDateChange(e.target.value)}
-          className="bg-charcoal-900 border border-stone-700 text-stone-200 text-sm px-3 py-1.5 rounded-sm focus:outline-none focus:border-gold-500 [color-scheme:dark]"
+          disabled={interactionDisabled}
+          className="bg-charcoal-900 border border-stone-700 disabled:opacity-60 text-stone-200 text-sm px-3 py-1.5 rounded-sm focus:outline-none focus:border-gold-500 [color-scheme:dark]"
         />
       </div>
 
@@ -131,20 +181,25 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
         </div>
       )}
 
-      {error && <p className="text-red-400 text-xs">{error.message}</p>}
+      {!loading && (error || availabilityUnknown) && (
+        <p role="alert" className="text-red-400 text-xs">
+          Availability could not be refreshed. Reload the page before trying again.
+        </p>
+      )}
 
-      {!loading && !error && slots.length === 0 && (
+      {!loading && !error && !availabilityUnknown && slots.length === 0 && (
         <p className="text-stone-500 text-xs italic">No available slots on this date.</p>
       )}
 
-      {!loading && slots.length > 0 && (
+      {!loading && !error && !availabilityUnknown && slots.length > 0 && (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             {slots.map((slot) => (
               <button
                 key={slot.startTime}
                 onClick={() => setSelectedSlot((prev) => (prev === slot.startTime ? null : slot.startTime))}
-                className={`px-3 py-1.5 border text-sm rounded-sm transition-colors ${
+                disabled={interactionDisabled}
+                className={`px-3 py-1.5 border text-sm rounded-sm disabled:opacity-60 transition-colors ${
                   selectedSlot === slot.startTime
                     ? 'border-gold-500 text-gold-400 bg-charcoal-900'
                     : 'border-stone-700 text-stone-300 bg-charcoal-900 hover:border-gold-500 hover:text-gold-400'
@@ -154,21 +209,33 @@ export default function StylistSlots({ businessId, stylistId, stylistName, servi
               </button>
             ))}
           </div>
-
-          {selectedSlot && (
-            <BookingForm
-              stylistId={stylistId}
-              serviceId={serviceId}
-              startTime={selectedSlot}
-              startTimeLabel={slotTimeLabel(selectedSlot)}
-              date={date}
-              stylistName={stylistName}
-              serviceName={serviceName}
-              onCancel={() => setSelectedSlot(null)}
-              onSuccess={(freshSlots) => setSlotOverride(freshSlots)}
-            />
-          )}
         </div>
+      )}
+
+      {selectedSlot && (
+        <BookingForm
+          key={selectedSlot}
+          stylistId={stylistId}
+          serviceId={serviceId}
+          startTime={selectedSlot}
+          startTimeLabel={slotTimeLabel(selectedSlot)}
+          date={date}
+          stylistName={stylistName}
+          serviceName={serviceName}
+          slotAvailable={
+            !loading
+            && !error
+            && !availabilityUnknown
+            && !interactionDisabled
+            && slots.some((slot) => slot.startTime === selectedSlot)
+          }
+          onCancel={() => setSelectedSlot(null)}
+          onSuccess={(freshSlots) => setSlotOverride(freshSlots)}
+          onReconcile={reconcileSlots}
+          onSubmittingChange={onSubmittingChange}
+          onUnsafeToRetry={handleUnsafeSubmission}
+          submissionLock={submissionLock}
+        />
       )}
     </div>
   );
